@@ -6,7 +6,7 @@ end
 
 local baseurl=""
 local reportOnce
-local Version="2.0"
+local Version="2.1"
 local CSRF_TOKEN=nil
 local CSRF2_TOKEN=nil
 local connection
@@ -348,9 +348,14 @@ function RefreshAccount (account, since)
                           securities[name]=security
                           table.insert(securities,security)
                         else
-                          securities[name]['sumPrice']=securities[name]['sumPrice']+security['purchasePrice']*quantity
                           securities[name]['quantity']=securities[name]['quantity']+quantity
-                          securities[name]['purchasePrice']=securities[name]['sumPrice']/securities[name]['quantity']
+                          if security['purchasePrice'] ~= nil and securities[name]['sumPrice'] ~= nil then
+                            securities[name]['sumPrice']=securities[name]['sumPrice']+security['purchasePrice']*quantity
+                            securities[name]['purchasePrice']=securities[name]['sumPrice']/securities[name]['quantity']
+                          else
+                            securities[name]['sumPrice']=nil
+                            securities[name]['purchasePrice']=nil
+                          end
                         end
                       else
                         table.insert(securities,security)
@@ -386,5 +391,3 @@ function EndSession ()
   -- Logout.
   connectWithCSRF("GET","services/participant/logout")
 end
-
--- SIGNATURE: MCwCFDWF76Fxoab2ziwGpvId/BiBF9fkAhQlegaxKqJWS5hxCEOmxX2PBw1C4g==
