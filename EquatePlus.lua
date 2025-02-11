@@ -391,3 +391,5 @@ function EndSession ()
   -- Logout.
   connectWithCSRF("GET","services/participant/logout")
 end
+
+-- SIGNATURE: MC0CFQCAvuO8tEE66YK0ZhAm76gHE6Tw0gIUD3F98TfMYQk+RDYZYHlMFdDwSSU=
