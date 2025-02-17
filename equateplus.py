@@ -270,7 +270,7 @@ class EquatePlus:
                 file_name: str = document["description"] + f" ({date}).pdf"
                 file_path: Path = self.documents_dir / file_name.replace("/", "-")
 
-                if self.download_document(document["id"], document["description"], file_path):
+                if self.download_document(document["id"], file_path):
                     print(".", end="", flush=True)
                 else:
                     print("x", end="", flush=True)
@@ -281,7 +281,7 @@ class EquatePlus:
         print(" ", end="", flush=True)
         return True
 
-    def download_document(self, document_id: str, title: str, file_path: Path) -> bool:
+    def download_document(self, document_id: str, file_path: Path) -> bool:
         response: requests.Response = self.session.get(
             "https://www.equateplus.com/EquatePlusParticipant2/services/statements/download",
             params={

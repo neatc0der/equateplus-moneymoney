@@ -378,6 +378,34 @@ function RefreshAccount (account, since)
   return {securities=securities}
 end
 
+function FetchStatements (accounts, knownIdentifiers)
+  local statements = {}
+
+  -- Load postbox page.
+  local library = JSON(connectWithCSRF("POST","https://www.equateplus.com/EquatePlusParticipant2/services/documents/library?_cId="..cId.."&_rId="..rnd(),"{\"$type\":\"Object\"}","application/json;charset=UTF-8")):dictionary()
+
+  local pattern = "(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)"
+  for k,document in pairs(library["documents"]) do
+    local statement = {}
+    local year, month, day, hour, minute, second = document["date"]:match(pattern)
+    statement.creationDate = os.time({year=year,month=month,day=day})
+    statement.name = document["description"]
+    statement.identifier = document["id"]
+    statement.filename = (document["description"] .. "(" .. MM.localizeDate(statement.creationDate) .. ").pdf"):gsub("/", "-")
+    if not knownIdentifiers[statement.identifier] then
+      print("Downloading statement: " .. statement.filename)
+      statement.pdf = connectWithCSRF("GET", "https://www.equateplus.com/EquatePlusParticipant2/services/statements/download?documentId="..statement.identifier.."&downloadType=inline&source=LIBRARY")
+      if startsWith(statement.pdf, "{\"$type\":\"TechnicalError\"") then
+        print("error downloading statement")
+      else
+        table.insert(statements, statement)
+      end
+    end
+  end
+
+  return {statements=statements}
+end
+
 function bugReport(status,err,v)
   if not status and reportOnce then
     reportOnce=false
@@ -389,7 +417,5 @@ end
 
 function EndSession ()
   -- Logout.
-  connectWithCSRF("GET","services/participant/logout")
+  connectWithCSRF("GET","https://www.equateplus.com/EquatePlusParticipant2/services/participant/logout")
 end
-
--- SIGNATURE: MC0CFQCAvuO8tEE66YK0ZhAm76gHE6Tw0gIUD3F98TfMYQk+RDYZYHlMFdDwSSU=
