@@ -6,7 +6,7 @@ end
 
 local baseurl=""
 local reportOnce
-local Version="3.0.0"
+local Version="3.0"
 local CSRF_TOKEN=nil
 local CSRF2_TOKEN=nil
 local connection
