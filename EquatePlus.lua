@@ -6,7 +6,7 @@ end
 
 local baseurl=""
 local reportOnce
-local Version="3.0"
+local Version=3.00
 local CSRF_TOKEN=nil
 local CSRF2_TOKEN=nil
 local connection
@@ -419,3 +419,5 @@ function EndSession ()
   -- Logout.
   connectWithCSRF("GET","https://www.equateplus.com/EquatePlusParticipant2/services/participant/logout")
 end
+
+-- SIGNATURE: MCwCFAf5dPf+zi2l1NSWRHsSzplHaJyLAhQZSM+ssqOMG1BBGvMO2OTFeWkfbA==
