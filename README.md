@@ -2,7 +2,10 @@
 
 A quick and dirty plugin for MoneyMoney for share depot. See `equateplus.py` as showcase for api calls.
 
-Plugin now supports EquateAccess App authentication.
+Plugin now supports:
+
+* EquateAccess App authentication
+* Statement download
 
 No warrenty or whatsoever!
 

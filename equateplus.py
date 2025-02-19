@@ -8,17 +8,14 @@ Please act during verify_qr_code:
 - equateplus_qr.png: Scan QR code with EquateAccess app
 """
 from base64 import b64decode
+from datetime import datetime
 from pathlib import Path
+from pickle import dumps, loads
 from random import randint
 from time import sleep
 
+import click
 import requests
-
-
-CREDENTIALS_PATH: Path = Path("credentials.txt")
-QR_CODE_PATH: Path = Path("equateplus_qr.png")
-
-CREDENTIALS: list[str] = CREDENTIALS_PATH.read_text().strip().split("\n")
 
 
 def debug(func):
@@ -54,8 +51,13 @@ def get_amount(data: dict) -> float:
     return quantity["amount"]
 
 
-class Equate:
-    def __init__(self) -> None:
+class EquatePlus:
+    def __init__(self, username: str, password: str, qr_code_path: Path) -> None:
+        self.username: str = username
+        self.password: str = password
+        self.qr_code_path: Path = qr_code_path
+        self.documents_dir: Path = Path("documents")
+
         self.session: requests.Session = requests.Session()
         self.cookies: dict[str, str] = {}
         self.csrf: str | None = None
@@ -105,7 +107,7 @@ class Equate:
             },
             data={
                 "csrfpId": self.csrf,
-                "isiwebuserid": CREDENTIALS[0],
+                "isiwebuserid": self.username,
                 "result": "Continue Login",
             },
             headers={
@@ -119,8 +121,8 @@ class Equate:
             "https://www.equateplus.com/EquatePlusParticipant2/?login",
             data={
                 "csrfpId": self.csrf,
-                "isiwebuserid": CREDENTIALS[0],
-                "isiwebpasswd": CREDENTIALS[1],
+                "isiwebuserid": self.username,
+                "isiwebpasswd": self.password,
                 "result": "Continue",
             },
             headers={
@@ -134,7 +136,7 @@ class Equate:
         response: requests.Response = self.session.post(
             "https://www.equateplus.com/EquatePlusParticipant2/?login",
             data={
-                "isiwebuserid": CREDENTIALS[0],
+                "isiwebuserid": self.username,
                 "isiwebpasswd": "null",
                 "result": "null",
             },
@@ -164,7 +166,7 @@ class Equate:
 
         try:
             data = response.json()
-            QR_CODE_PATH.write_bytes(b64decode(data["dispatcherInformation"]["response"] + "=="))
+            self.qr_code_path.write_bytes(b64decode(data["dispatcherInformation"]["response"] + "=="))
             self.session_id = data["sessionId"]
 
             return True
@@ -254,29 +256,115 @@ class Equate:
         return True
 
     @debug
+    def get_documents(self) -> bool:
+        response: requests.Response = self.session.post(
+            "https://www.equateplus.com/EquatePlusParticipant2/services/documents/library",
+            params=self.ids(),
+            json={
+                "$type": "Object",
+            },
+        )
+        try:
+            for document in response.json()["documents"]:
+                date: str = datetime.fromisoformat(document["date"]).strftime("%d.%m.%Y")
+                file_name: str = document["description"] + f" ({date}).pdf"
+                file_path: Path = self.documents_dir / file_name.replace("/", "-")
+
+                if self.download_document(document["id"], file_path):
+                    print(".", end="", flush=True)
+                else:
+                    print("x", end="", flush=True)
+
+        except (KeyError, IndexError):
+            return False
+        
+        print(" ", end="", flush=True)
+        return True
+
+    def download_document(self, document_id: str, file_path: Path) -> bool:
+        response: requests.Response = self.session.get(
+            "https://www.equateplus.com/EquatePlusParticipant2/services/statements/download",
+            params={
+                "documentId": document_id,
+                "downloadType": "inline",
+                "source": "LIBRARY",
+            },
+        )
+        if response.content.startswith(b"{\"$type\":\"TechnicalError\""):
+            return False
+
+        try:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            file_path.write_bytes(response.content)
+        
+        except:
+            return False
+
+        return True
+
+    @debug
     def logout(self) -> None:
         self.session.get(
             "https://www.equateplus.com/EquatePlusParticipant2/services/participant/logout",
         )
 
 
-def main() -> None:
-    e = Equate()
+@click.command()
+@click.option("--credentials-path", type=Path, default=Path("credentials.txt"), show_default=True)
+@click.option("--qr-code-path", type=Path, default=Path("equateplus_qr.png"), show_default=True)
+@click.option("--pickle-path", type=Path, default=Path("equateplus.pckl"), show_default=True)
+@click.option("--download-documents", is_flag=True, help="download documents")
+@click.option(
+    "--store",
+    is_flag=True,
+    help="serialize EquatePlus object to file (and don't logout)",
+)
+@click.option(
+    "--restore",
+    is_flag=True,
+    help="deserialize EquatePlus object from file (and don't login)",
+)
+@click.option("--no-logout", is_flag=True, help="don't logout")
+def main(credentials_path: Path, qr_code_path: Path, pickle_path: Path, download_documents: bool, store: bool, restore: bool, no_logout: bool) -> None:
+    credentials: list[str] = credentials_path.read_text().strip().split("\n")
+    equateplus = EquatePlus(username=credentials[0], password=credentials[1], qr_code_path=qr_code_path)
+    login_successful: bool = False
     try:
-        e.initialize() and \
-        e.send_user() and \
-        e.send_credentials() and \
-        e.request_devices() and \
-        e.request_qr_code() and \
-        e.verify_qr_code() and \
-        e.complete_login() and \
-        e.get_plan_summary() and \
-        e.get_plan_details()
+        if restore:
+            equateplus = loads(pickle_path.read_bytes())
+            print("equateplus restored")
+            login_successful = True
+
+        else:
+            login_successful = equateplus.initialize() and \
+            equateplus.send_user() and \
+            equateplus.send_credentials() and \
+            equateplus.request_devices() and \
+            equateplus.request_qr_code() and \
+            equateplus.verify_qr_code() and \
+            equateplus.complete_login()
+        
+        if store:
+            if login_successful:
+                pickle_path.write_bytes(dumps(equateplus))
+                print("equateplus stored")
+            else:
+                print("equateplus not stored - login failed")
+
+        login_successful and \
+        equateplus.get_plan_summary() and \
+        equateplus.get_plan_details() and \
+        download_documents and \
+        equateplus.get_documents()
+
     finally:
-        e.logout()
+        if not store and not no_logout:
+            equateplus.logout()
+        else:
+            print("equateplus not logged out")
 
     from pprint import pprint
-    pprint(e.securities)
+    pprint(equateplus.securities)
 
 
 if __name__ == "__main__":
