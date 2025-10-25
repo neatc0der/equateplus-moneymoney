@@ -54,7 +54,7 @@ function connectWithCSRF(method, url, postContent, postContentType, headers)
   if CSRF_TOKEN ~= nil then
     headers['csrfpId']=CSRF_TOKEN
   else
-    print("without CSRF_TOKEN")
+    if debugging then print("without CSRF_TOKEN") end
   end
   if CSRF2_TOKEN ~= nil then
     headers["EQUATE-CSRF2-TOKEN-PARTICIPANT2"]=CSRF2_TOKEN
@@ -88,7 +88,20 @@ function connectWithCSRF(method, url, postContent, postContentType, headers)
     CSRF2_TOKEN = csrf2Temp
   end
   if debugging then
-    tprint(headers)
+    local headersToLog = {}
+    for k, v in pairs(headers or {}) do
+      local kl = string.lower(tostring(k))
+      if nosecrets and (
+        kl == "set-cookie" or kl == "cookie" or kl == "authorization" or
+        kl == "equate-csrf2-token-participant2" or kl == "csrfpid" or
+        kl == "x-csrf-token" or kl == "x-auth-token"
+      ) then
+        headersToLog[k] = "<redacted>"
+      else
+        headersToLog[k] = v
+      end
+    end
+    tprint(headersToLog)
     -- lprint(content)
   end
   return content
@@ -122,13 +135,19 @@ function tprint (tbl, indent)
   if debugging then
     if not indent then indent = 3 end
     for k, v in pairs(tbl) do
-      formatting = string.rep(" ", indent) .. k .. ": "
-      if nosecrets and (type(v) == 'string') then
-        print(formatting .. type(v).."'"..v.."'")
+      local formatting = string.rep(" ", indent) .. k .. ": "
+      if type(v) == 'table' and indent < 9 then
+        print(formatting .. "table")
+        tprint(v,indent+3)
+      elseif type(v) == 'string' then
+        if nosecrets then
+          print(formatting .. "string'<redacted>'")
+        else
+          print(formatting .. "string'"..v.."'")
+        end
       else
         print(formatting .. type(v))
       end
-      if type(v) == 'table' and indent < 9 then tprint(v,indent+3) end
     end
   end
 end
@@ -534,7 +553,7 @@ function FetchStatements (accounts, knownIdentifiers)
     statement.identifier = document["id"]
     statement.filename = (document["description"] .. "(" .. MM.localizeDate(statement.creationDate) .. ").pdf"):gsub("/", "-")
     if not knownIdentifiers[statement.identifier] then
-      print("Downloading statement: " .. statement.filename)
+      if debugging then print("Downloading statement: " .. statement.filename) end
       statement.pdf = connectWithCSRF("GET", "https://www.equateplus.com/EquatePlusParticipant2/services/statements/download?documentId="..statement.identifier.."&downloadType=inline&source=LIBRARY")
       if startsWith(statement.pdf, "{\"$type\":\"TechnicalError\"") then
         print("error downloading statement")
