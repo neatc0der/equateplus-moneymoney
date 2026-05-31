@@ -86,7 +86,7 @@ class EquatePlus:
         # Default headers
         self.session.headers["Accept"] = "*/*"
 
-    def set_csrf(self, response: requests.Response, **kwargs) -> None:
+    def set_csrf(self, response: requests.Response, **_kwargs) -> None:
         prefix = b"csrfRegisterAjax(\"csrfpId\", \""
         if prefix in response.content:
             self.csrf = (
@@ -310,7 +310,11 @@ class EquatePlus:
                     not data.get("empty", False)
                     and len(self.plan_ids) > 0
                 )
-            except Exception:
+            except (
+                ValueError,
+                requests.exceptions.JSONDecodeError,
+                AttributeError,
+            ):
                 return False
 
         if _parse_and_store(response):
@@ -431,7 +435,7 @@ class EquatePlus:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             file_path.write_bytes(response.content)
         
-        except Exception:
+        except OSError:
             return False
 
         return True
@@ -563,4 +567,6 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    # click decorates `main` and supplies arguments at runtime.
+    # pylint: disable=no-value-for-parameter
+    main()  # type: ignore
