@@ -41,21 +41,19 @@ end
 function connectWithCSRF(method, url, postContent, postContentType, headers)
   -- Normalize URL to selected datacenter host
   local function normalize(u)
-    if string.match(u or "", "^https?://") then
-      if dcHost ~= nil and dcHost ~= "" then
-        local path = string.match(u, "^https?://[^/]+(.*)$") or "/"
-        return dcHost .. path
-      else
-        return u
-      end
+    local host = dcHost or "https://www.equateplus.com"
+    u = u or ""
+    if string.match(u, "^https?://") then
+      -- absolute URL: replace host only
+      local path = string.match(u, "^https?://[^/]+(.*)$") or "/"
+      return host .. path
+    elseif string.sub(u, 1, 1) == "?" then
+      -- query-relative (e.g. "?login" from form action="?login"):
+      -- resolve against /EquatePlusParticipant2/ so we get the correct full path
+      return host .. "/EquatePlusParticipant2/" .. u
     else
-      if dcHost ~= nil and dcHost ~= "" then
-        if string.sub(u or "",1,1) ~= "/" then u = "/"..(u or "") end
-        return dcHost .. u
-      else
-        if string.sub(u or "",1,1) ~= "/" then u = "/"..(u or "") end
-        return "https://www.equateplus.com" .. u
-      end
+      if string.sub(u, 1, 1) ~= "/" then u = "/" .. u end
+      return host .. u
     end
   end
 
