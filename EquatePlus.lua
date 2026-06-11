@@ -5,6 +5,15 @@ function rnd()
   return math.random(10000000,99999999)
 end
 
+local function urlencode(s)
+  if s == nil then return "" end
+  s = tostring(s)
+  s = string.gsub(s, "([^A-Za-z0-9%-_%.~])", function(c)
+    return string.format("%%%02X", string.byte(c))
+  end)
+  return s
+end
+
 local baseurl=""
 local dcHost = "https://www.equateplus.com"
 local reportOnce
@@ -91,7 +100,7 @@ function connectWithCSRF(method, url, postContent, postContentType, headers)
     end
     h["Accept"] = h["Accept"] or "*/*"
     -- For login orchestration endpoints, request JSON and mark XHR
-    if string.find(u, "?login") then
+    if string.find(u, "%?login") then
       h["Accept"] = "application/json, text/plain, */*"
       h["X-Requested-With"] = h["X-Requested-With"] or "XMLHttpRequest"
       if h["Referer"] == nil then
@@ -112,7 +121,7 @@ function connectWithCSRF(method, url, postContent, postContentType, headers)
     if headers == nil then headers={} end
     headers["Accept"] = headers["Accept"] or "*/*"
     -- For login orchestration endpoints, request JSON and mark XHR
-    if string.find(url, "?login") then
+    if string.find(url, "%?login") then
       headers["Accept"] = "application/json, text/plain, */*"
       headers["X-Requested-With"] = headers["X-Requested-With"] or "XMLHttpRequest"
       if headers["Referer"] == nil then
@@ -225,8 +234,8 @@ function InitializeSession2 (protocol, bankCode, step, credentials, interactive)
     CSRF2_TOKEN=nil
     connection = Connection()
 
-    username=credentials[1]
-    password=credentials[2]
+    local username=credentials[1]
+    local password=credentials[2]
 
     if string.sub(username,1,1) == '#' then
       print("Debugging, remove # char from username!")
@@ -256,8 +265,7 @@ function InitializeSession2 (protocol, bankCode, step, credentials, interactive)
       -- Outage screen or changed landing; attempt geo DCs
       local tried = {
         "https://www.emea.equateplus.com/EquatePlusParticipant2/?login",
-        "https://www.na.equateplus.com/EquatePlusParticipant2/?login",
-        "https://participant.tst.equateplus.com/EquatePlusParticipant2/?login" -- BT1 fallback (rare)
+        "https://www.na.equateplus.com/EquatePlusParticipant2/?login"
       }
       for _, u in ipairs(tried) do
         -- Pin host to the candidate datacenter
@@ -354,7 +362,7 @@ function InitializeSession2 (protocol, bankCode, step, credentials, interactive)
     local resp = connectWithCSRF(
       "POST",
       "https://www.equateplus.com/EquatePlusParticipant2/?login&_cId="..cId.."&_rId="..rnd(),
-      "isiwebuserid="..username.."&isiwebpasswd=null&result=null",
+      "isiwebuserid="..urlencode(username).."&isiwebpasswd=null&result=null",
       "application/x-www-form-urlencoded"
     )
     local ok, json = pcall(function() return JSON(resp):dictionary() end)
@@ -424,7 +432,8 @@ function InitializeSession2 (protocol, bankCode, step, credentials, interactive)
     -- Wait up to 30 seconds for verification (FIDO/QR)
     local count = 0
     while count < 30 do
-      json = JSON(connectWithCSRF("GET","https://www.equateplus.com/EquatePlusParticipant2/?login&o.fidoUafSessionId.v="..session_id.."&_cId="..cId.."&_rId="..rnd())):dictionary()
+      local json = JSON(connectWithCSRF("GET","https://www.equateplus.com/EquatePlusParticipant2/?login&o.fidoUafSessionId.v="..session_id.."&_cId="..cId.."&_rId="..rnd())):dictionary()
+      print(json["status"])
       if json["status"] == "succeeded" then
         -- Complete login after verification
         connectWithCSRF("POST","https://www.equateplus.com/EquatePlusParticipant2/?login&_cId="..cId.."&_rId="..rnd(), "result=Continue", "application/x-www-form-urlencoded")
