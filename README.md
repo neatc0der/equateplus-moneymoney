@@ -1,5 +1,8 @@
 # EquatePlus Extension for MoneyMoney
 
+> [!NOTE]
+> Requires MoneyMoney 2.4.72 or later
+
 A MoneyMoney extension for tracking EquatePlus employee share plan portfolios and downloading account statements. Supports both the EquateAccess App (QR/FIDO) and SMS one-time-code authentication.
 
 ---
