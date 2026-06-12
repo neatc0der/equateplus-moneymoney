@@ -727,3 +727,5 @@ function EndSession ()
   -- Logout.
   connectWithCSRF("GET","https://www.equateplus.com/EquatePlusParticipant2/services/participant/logout")
 end
+
+-- SIGNATURE: MCwCFGiSlouFnhu7ankjaIYZx/ZFZ1O+AhQwTaDiI85Bun6E6q3PF/hBlp4sKw==
