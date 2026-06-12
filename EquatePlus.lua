@@ -15,7 +15,6 @@ local function urlencode(s)
   return s
 end
 
-local baseurl=""
 local dcHost = "https://www.equateplus.com"
 local reportOnce
 local Version=4.00
@@ -28,19 +27,6 @@ local cummulate=false
 local html
 local cId="eqp."..rnd()
 local session_id
--- Generates the challenge image from the raw API response.
--- raw: either a URL (for MM native QR rendering via poll=true) or base64-encoded image data.
-local function generate_challenge_image(raw)
-  if string.match(raw, "^https?://") then
-    return raw  -- returned as-is; caller sets poll=true for native MM rendering
-  else
-    return MM.imageResize(MM.base64decode(raw), 240, 240)
-  end
-end
-
-local function is_qr_url(raw)
-  return string.match(raw, "^https?://") ~= nil
-end
 
 -- State for SMS-OTP authentication flow
 local awaitingOtp=false
@@ -228,7 +214,6 @@ function InitializeSession2 (protocol, bankCode, step, credentials, interactive)
 
   if step==1 then
     -- Login.
-    baseurl=""
     debugging=false
     cummulate=true
     CSRF_TOKEN=nil
@@ -266,12 +251,12 @@ function InitializeSession2 (protocol, bankCode, step, credentials, interactive)
       -- Outage screen or changed landing; attempt geo DCs
       local tried = {
         "https://www.emea.equateplus.com/EquatePlusParticipant2/?login",
-        "https://www.na.equateplus.com/EquatePlusParticipant2/?login"
+        "https://www.na.equateplus.com/EquatePlusParticipant2/?login",
+        "https://participant.tst.equateplus.com/EquatePlusParticipant2/?login" -- BT1 fallback (rare)
       }
       for _, u in ipairs(tried) do
         -- Pin host to the candidate datacenter
         dcHost = string.match(u, "^(https?://[^/]+)") or dcHost
-        baseurl = "" -- reset baseurl so relative paths work
         local candidate = tryLoadLogin(u)
         if hasLoginForm(candidate) then
           html = candidate
@@ -375,15 +360,14 @@ function InitializeSession2 (protocol, bankCode, step, credentials, interactive)
     -- get qr code
     json = JSON(connectWithCSRF("GET","https://www.equateplus.com/EquatePlusParticipant2/?login&o.dispatchTargetId.v="..target["id"].."&_cId="..cId.."&_rId="..rnd())):dictionary()
     session_id = json["sessionId"]
-    local qr_code = json["dispatcherInformation"]["response"]
-
-    local challenge_image = generate_challenge_image(qr_code)
+    local challenge = json["dispatcherInformation"]["response"]
 
     -- request authentication
     return {
       title=target["name"],
-      challenge=challenge_image,
-      poll=is_qr_url(qr_code) or nil,
+      challenge=challenge,
+      poll=true,
+      tanMethod={name="QR-Code"},
     }
 
   else
@@ -743,4 +727,3 @@ function EndSession ()
   -- Logout.
   connectWithCSRF("GET","https://www.equateplus.com/EquatePlusParticipant2/services/participant/logout")
 end
-
