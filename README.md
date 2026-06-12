@@ -1,9 +1,9 @@
 # EquatePlus Extension for MoneyMoney
 
-A MoneyMoney extension for tracking EquatePlus employee share plan portfolios and downloading account statements.
+> [!NOTE]
+> Requires MoneyMoney 2.4.72 or later
 
-> **Based on the original work by [neatc0der](https://github.com/neatc0der/equateplus-moneymoney).
-> This fork adds SMS OTP authentication support and several robustness improvements.**
+A MoneyMoney extension for tracking EquatePlus employee share plan portfolios and downloading account statements. Supports both the EquateAccess App (QR/FIDO) and SMS one-time-code authentication.
 
 ---
 
@@ -12,7 +12,7 @@ A MoneyMoney extension for tracking EquatePlus employee share plan portfolios an
 - Portfolio synchronisation (positions, quantities, purchase prices, market prices)
 - Statement download from the EquatePlus document library
 - **EquateAccess App** (FIDO/QR code) authentication
-- **SMS security code (OTP)** authentication — added in this fork
+- **SMS security code (OTP)** authentication
 - Datacenter failover with host pinning (EMEA / NA / primary)
 - Robust login detection across datacenter variants
 - Cumulative position mode (aggregate positions per security)

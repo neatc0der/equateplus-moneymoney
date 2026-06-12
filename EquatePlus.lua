@@ -1,3 +1,4 @@
+-- Requires MoneyMoney 2.4.72 or later (native QR display with poll support)
 -- Use participant login entry to avoid outage landing page
 local url="https://www.equateplus.com/EquatePlusParticipant2/?login"
 
@@ -5,10 +6,18 @@ function rnd()
   return math.random(10000000,99999999)
 end
 
-local baseurl=""
+local function urlencode(s)
+  if s == nil then return "" end
+  s = tostring(s)
+  s = string.gsub(s, "([^A-Za-z0-9%-_%.~])", function(c)
+    return string.format("%%%02X", string.byte(c))
+  end)
+  return s
+end
+
 local dcHost = "https://www.equateplus.com"
 local reportOnce
-local Version=3.00
+local Version=4.00
 local CSRF_TOKEN=nil
 local CSRF2_TOKEN=nil
 local connection
@@ -78,7 +87,7 @@ function connectWithCSRF(method, url, postContent, postContentType, headers)
     end
     h["Accept"] = h["Accept"] or "*/*"
     -- For login orchestration endpoints, request JSON and mark XHR
-    if string.find(u, "?login") then
+    if string.find(u, "%?login") then
       h["Accept"] = "application/json, text/plain, */*"
       h["X-Requested-With"] = h["X-Requested-With"] or "XMLHttpRequest"
       if h["Referer"] == nil then
@@ -99,7 +108,7 @@ function connectWithCSRF(method, url, postContent, postContentType, headers)
     if headers == nil then headers={} end
     headers["Accept"] = headers["Accept"] or "*/*"
     -- For login orchestration endpoints, request JSON and mark XHR
-    if string.find(url, "?login") then
+    if string.find(url, "%?login") then
       headers["Accept"] = "application/json, text/plain, */*"
       headers["X-Requested-With"] = headers["X-Requested-With"] or "XMLHttpRequest"
       if headers["Referer"] == nil then
@@ -205,15 +214,14 @@ function InitializeSession2 (protocol, bankCode, step, credentials, interactive)
 
   if step==1 then
     -- Login.
-    baseurl=""
     debugging=false
     cummulate=true
     CSRF_TOKEN=nil
     CSRF2_TOKEN=nil
     connection = Connection()
 
-    username=credentials[1]
-    password=credentials[2]
+    local username=credentials[1]
+    local password=credentials[2]
 
     if string.sub(username,1,1) == '#' then
       print("Debugging, remove # char from username!")
@@ -249,7 +257,6 @@ function InitializeSession2 (protocol, bankCode, step, credentials, interactive)
       for _, u in ipairs(tried) do
         -- Pin host to the candidate datacenter
         dcHost = string.match(u, "^(https?://[^/]+)") or dcHost
-        baseurl = "" -- reset baseurl so relative paths work
         local candidate = tryLoadLogin(u)
         if hasLoginForm(candidate) then
           html = candidate
@@ -268,14 +275,25 @@ function InitializeSession2 (protocol, bankCode, step, credentials, interactive)
     html= HTML(connectWithCSRF(html:xpath("//*[@id='loginForm']"):submit()))
     if not hasLoginForm(html) then return "EquatePlus plugin error: No login mask found!" end
 
-    -- second login stage
-    -- print("login second stage")
-    html:xpath("//*[@id='eqUserId']"):attr("value", username)
-    html:xpath("//*[@id='eqPwdId']"):attr("value", password)
-    -- Some DCs expect the exact label 'Continue Login'
-    html:xpath("//*[@id='submitField']"):attr("value","Continue Login")
-
-    local content = connectWithCSRF(html:xpath("//*[@id='loginForm']"):submit())
+    -- second login stage: manual POST to include CSRF token in body
+    -- (HTML:submit() misses JS-injected hidden fields like csrfpId)
+    local function urlEncode(s)
+      return (s:gsub("([^%w%-%.%_%~ ])", function(c)
+        return string.format("%%%02X", string.byte(c))
+      end):gsub(" ", "+"))
+    end
+    local postBody = "isiwebuserid=" .. urlEncode(username) ..
+                     "&isiwebpasswd=" .. urlEncode(password) ..
+                     "&result=Continue"
+    if CSRF_TOKEN then
+      postBody = postBody .. "&csrfpId=" .. urlEncode(CSRF_TOKEN)
+    end
+    local content = connectWithCSRF(
+      "POST",
+      dcHost .. "/EquatePlusParticipant2/?login",
+      postBody,
+      "application/x-www-form-urlencoded"
+    )
     html = HTML(content)
 
     -- Detect SMS OTP flow
@@ -330,7 +348,7 @@ function InitializeSession2 (protocol, bankCode, step, credentials, interactive)
     local resp = connectWithCSRF(
       "POST",
       "https://www.equateplus.com/EquatePlusParticipant2/?login&_cId="..cId.."&_rId="..rnd(),
-      "isiwebuserid="..username.."&isiwebpasswd=null&result=null",
+      "isiwebuserid="..urlencode(username).."&isiwebpasswd=null&result=null",
       "application/x-www-form-urlencoded"
     )
     local ok, json = pcall(function() return JSON(resp):dictionary() end)
@@ -342,12 +360,14 @@ function InitializeSession2 (protocol, bankCode, step, credentials, interactive)
     -- get qr code
     json = JSON(connectWithCSRF("GET","https://www.equateplus.com/EquatePlusParticipant2/?login&o.dispatchTargetId.v="..target["id"].."&_cId="..cId.."&_rId="..rnd())):dictionary()
     session_id = json["sessionId"]
-    local qr_code = json["dispatcherInformation"]["response"]
+    local challenge = json["dispatcherInformation"]["response"]
 
     -- request authentication
     return {
       title=target["name"],
-      challenge=MM.imageResize(MM.base64decode(qr_code),240,240),
+      challenge=challenge,
+      poll=true,
+      tanMethod={name="QR-Code"},
     }
 
   else
@@ -398,7 +418,7 @@ function InitializeSession2 (protocol, bankCode, step, credentials, interactive)
     -- Wait up to 30 seconds for verification (FIDO/QR)
     local count = 0
     while count < 30 do
-      json = JSON(connectWithCSRF("GET","https://www.equateplus.com/EquatePlusParticipant2/?login&o.fidoUafSessionId.v="..session_id.."&_cId="..cId.."&_rId="..rnd())):dictionary()
+      local json = JSON(connectWithCSRF("GET","https://www.equateplus.com/EquatePlusParticipant2/?login&o.fidoUafSessionId.v="..session_id.."&_cId="..cId.."&_rId="..rnd())):dictionary()
       print(json["status"])
       if json["status"] == "succeeded" then
         -- Complete login after verification
@@ -443,6 +463,14 @@ function ListAccounts (knownAccounts)
   return {account}
 end
 
+local function isLoginRedirect(content)
+  return content ~= nil and (
+    string.find(content, "eqp-login-application") ~= nil or
+    string.find(content, 'id="loginForm"') ~= nil or
+    string.find(content, 'id="eqUserId"') ~= nil
+  )
+end
+
 function RefreshAccount (account, since)
   -- Try POST (preferred on some backends)
   local summaryContent = connectWithCSRF(
@@ -451,11 +479,36 @@ function RefreshAccount (account, since)
     "{\"$type\":\"Object\"}",
     "application/json;charset=UTF-8"
   )
+
+  -- Detect session expiry / login redirect (April 2026 EquatePlus change)
+  if isLoginRedirect(summaryContent) then
+    print("EquatePlus: session expired or auth failed — got login page instead of portfolio data.")
+    print("Please trigger a new sync to re-authenticate.")
+    return {securities={}, balance=0}
+  end
+
   local summary = JSON(summaryContent):dictionary()
   -- Fallback to GET if no entries
   if not summary or not summary["entries"] or #summary["entries"] == 0 then
-    summary = JSON(connectWithCSRF("GET","https://www.equateplus.com/EquatePlusParticipant2/services/planSummary/get?_cId="..cId.."&_rId="..rnd())):dictionary()
+    local getContent = connectWithCSRF("GET","https://www.equateplus.com/EquatePlusParticipant2/services/planSummary/get?_cId="..cId.."&_rId="..rnd())
+    if isLoginRedirect(getContent) then
+      print("EquatePlus: GET also returned login page — session invalid.")
+      return {securities={}, balance=0}
+    end
+    summary = JSON(getContent):dictionary()
   end
+
+  if not summary then
+    print("EquatePlus: planSummary response could not be parsed as JSON.")
+    return {securities={}, balance=0}
+  end
+  if not summary["entries"] then
+    print("EquatePlus: planSummary has no 'entries' field — API may have changed.")
+    print("Response keys:")
+    for k, _ in pairs(summary) do print("  key: " .. tostring(k)) end
+    return {securities={}, balance=0}
+  end
+
   if debugging then tprint (summary) end
   local securities = {}
   reportOnce=true
@@ -627,7 +680,17 @@ function FetchStatements (accounts, knownIdentifiers)
   local statements = {}
 
   -- Load postbox page.
-  local library = JSON(connectWithCSRF("POST","https://www.equateplus.com/EquatePlusParticipant2/services/documents/library?_cId="..cId.."&_rId="..rnd(),"{\"$type\":\"Object\"}","application/json;charset=UTF-8")):dictionary()
+  local libraryContent = connectWithCSRF("POST","https://www.equateplus.com/EquatePlusParticipant2/services/documents/library?_cId="..cId.."&_rId="..rnd(),"{\"$type\":\"Object\"}","application/json;charset=UTF-8")
+  if isLoginRedirect(libraryContent) then
+    print("EquatePlus: FetchStatements — session expired, got login page.")
+    return {statements={}}
+  end
+  local library = JSON(libraryContent):dictionary()
+  if not library or not library["documents"] then
+    print("EquatePlus: documents/library has no 'documents' field — API may have changed.")
+    if library then for k, _ in pairs(library) do print("  key: " .. tostring(k)) end end
+    return {statements={}}
+  end
 
   local pattern = "(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)"
   for k,document in pairs(library["documents"]) do
@@ -665,4 +728,4 @@ function EndSession ()
   connectWithCSRF("GET","https://www.equateplus.com/EquatePlusParticipant2/services/participant/logout")
 end
 
--- NOTE: Signature removed due to local modifications.
+-- SIGNATURE: MCwCFGiSlouFnhu7ankjaIYZx/ZFZ1O+AhQwTaDiI85Bun6E6q3PF/hBlp4sKw==
